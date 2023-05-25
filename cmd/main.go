@@ -1,23 +1,30 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/gob"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"time"
 
-	"github.com/sysradium/request-counter/internal/counter"
-	"github.com/sysradium/request-counter/internal/snapshot"
+	"github.com/sysradium/request-counter/internal/counter/decorators"
+	"github.com/sysradium/request-counter/internal/counter/ephemeral"
 )
 
 var (
 	dataFilePath = "file.data"
 )
 
+type storage interface {
+	Add(time.Time) error
+	Len() int
+}
+
 func counterHandler(
-	c *counter.SlidingWindowStorage,
+	c storage,
 ) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if err := c.Add(time.Now()); err != nil {
@@ -30,42 +37,51 @@ func counterHandler(
 	}
 }
 
+func load(f *os.File) []time.Time {
+	bufferedReader := bufio.NewReader(f)
+
+	dec := gob.NewDecoder(bufferedReader)
+	var times []time.Time
+	for {
+		var t time.Time
+		if err := dec.Decode(&t); err != nil {
+			break
+		}
+		times = append(times, t)
+	}
+
+	f.Truncate(0)
+
+	return times
+
+}
+
 func main() {
 	logger := log.Default()
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	c := counter.New(
-		5*time.Second,
-		counter.WithContext(ctx),
-		counter.WithPeriodicVacuum(10*time.Second),
-		counter.WithLogger(logger),
+	file, err := os.OpenFile(dataFilePath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		logger.Fatal(err)
+	}
+	defer file.Close()
+
+	c := decorators.NewPersisted(
+		ephemeral.New(
+			30*time.Second,
+			ephemeral.WithContext(ctx),
+			ephemeral.WithPeriodicVacuum(5*time.Second),
+			ephemeral.WithLogger(logger),
+			ephemeral.WithData(load(file)),
+		),
+		file,
 	)
 
-	snap := snapshot.NewPeriodicSnapshotTaker(
-		10*time.Second,
-		c,
-		func(b []byte) {
-			tmpFile, _ := os.CreateTemp("", "tempfile")
-			if _, err := tmpFile.Write(b); err != nil {
-				return
-			}
-
-			if err := tmpFile.Close(); err != nil {
-				return
-			}
-
-			if err := os.Rename(tmpFile.Name(), dataFilePath); err != nil {
-				return
-			}
-		},
-	)
-
-	go snap.Run(ctx)
-
+	done := make(chan struct{})
 	go func() {
-		if err := c.Start(); err != nil {
+		if err := c.Start(ctx, done); err != nil {
 			logger.Fatal(err)
 		}
 	}()
@@ -73,4 +89,6 @@ func main() {
 	http.HandleFunc("/", counterHandler(c))
 
 	logger.Fatal(http.ListenAndServe(":8080", nil))
+
+	<-done
 }

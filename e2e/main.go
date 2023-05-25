@@ -30,7 +30,6 @@ func main() {
 			}
 			defer resp.Body.Close()
 
-			// Read and discard the response body
 			_, err = io.ReadAll(resp.Body)
 			if err != nil {
 				fmt.Printf("Error reading response: %s\n", err)
@@ -40,7 +39,6 @@ func main() {
 		}()
 	}
 
-	// Wait for all goroutines to complete
 	wg.Wait()
 
 	fmt.Println("All requests completed.")

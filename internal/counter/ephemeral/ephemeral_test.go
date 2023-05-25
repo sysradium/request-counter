@@ -1,12 +1,14 @@
-package counter
+package ephemeral_test
 
 import (
 	"testing"
 	"time"
+
+	"github.com/sysradium/request-counter/internal/counter/ephemeral"
 )
 
 func TestIsEmptyOnStart(t *testing.T) {
-	s := New(time.Second)
+	s := ephemeral.New(time.Second)
 
 	if l := s.Len(); l != 0 {
 		t.Errorf("expected storage to empty, got %d items instead", l)
@@ -63,8 +65,8 @@ func TestLen(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			s := New(window,
-				WithClock(func() time.Time {
+			s := ephemeral.New(window,
+				ephemeral.WithClock(func() time.Time {
 					return now
 				}),
 			)
@@ -87,8 +89,8 @@ func TestPruneKeepsRelevantData(t *testing.T) {
 	now := time.Date(2020, 11, 01, 00, 00, 00, 0, time.UTC)
 	window := 5 * time.Second
 
-	s := New(window,
-		WithClock(func() time.Time {
+	s := ephemeral.New(window,
+		ephemeral.WithClock(func() time.Time {
 			return now
 		}),
 	)
@@ -140,8 +142,8 @@ func TestGet(t *testing.T) {
 	for _, tt := range tests {
 		tt := tt
 		t.Run(tt.name, func(t *testing.T) {
-			s := New(window,
-				WithClock(func() time.Time {
+			s := ephemeral.New(window,
+				ephemeral.WithClock(func() time.Time {
 					return now
 				}),
 			)

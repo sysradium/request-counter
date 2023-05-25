@@ -1,4 +1,4 @@
-package counter
+package ephemeral
 
 import (
 	"context"
@@ -9,7 +9,8 @@ import (
 	"github.com/sysradium/request-counter/internal/counter/vacuum"
 )
 
-type SlidingWindowStorage struct {
+// EphemeralSlidingStorage keeps reqest times in memory for a specific time window
+type EphemeralSlidingStorage struct {
 	m      sync.Mutex
 	data   []time.Time
 	window time.Duration
@@ -20,7 +21,7 @@ type SlidingWindowStorage struct {
 	cancel context.CancelFunc
 }
 
-func (s *SlidingWindowStorage) Add(t time.Time) error {
+func (s *EphemeralSlidingStorage) Add(t time.Time) error {
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -29,7 +30,7 @@ func (s *SlidingWindowStorage) Add(t time.Time) error {
 	return nil
 }
 
-func (s *SlidingWindowStorage) Len() int {
+func (s *EphemeralSlidingStorage) Len() int {
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -46,7 +47,7 @@ func (s *SlidingWindowStorage) Len() int {
 	return count
 }
 
-func (s *SlidingWindowStorage) Get() []time.Time {
+func (s *EphemeralSlidingStorage) Get() []time.Time {
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -56,7 +57,7 @@ func (s *SlidingWindowStorage) Get() []time.Time {
 	return r
 }
 
-func (s *SlidingWindowStorage) Start() error {
+func (s *EphemeralSlidingStorage) Start() error {
 	if err := s.pruner.Run(s.ctx); err != nil {
 		s.log.Printf("unable to start: %v", err)
 		return err
@@ -65,16 +66,16 @@ func (s *SlidingWindowStorage) Start() error {
 	return nil
 }
 
-func (s *SlidingWindowStorage) Stop() {
+func (s *EphemeralSlidingStorage) Stop() {
 	s.cancel()
 }
 
-func (s *SlidingWindowStorage) Prune() {
+func (s *EphemeralSlidingStorage) Prune() {
 	cutoffTime := s.now().Add(-s.window)
 	s.prune(cutoffTime)
 }
 
-func (s *SlidingWindowStorage) prune(cutOffTime time.Time) {
+func (s *EphemeralSlidingStorage) prune(cutOffTime time.Time) {
 	s.m.Lock()
 	defer s.m.Unlock()
 
@@ -92,8 +93,8 @@ func (s *SlidingWindowStorage) prune(cutOffTime time.Time) {
 func New(
 	window time.Duration,
 	opts ...Option,
-) *SlidingWindowStorage {
-	s := &SlidingWindowStorage{
+) *EphemeralSlidingStorage {
+	s := &EphemeralSlidingStorage{
 		window: window,
 		log:    &common.NullLogger{},
 		ctx:    context.Background(),
